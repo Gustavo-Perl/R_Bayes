@@ -1,0 +1,117 @@
+#####################################################################
+#################### IMPORTA LIBS E DEFINE ##########################
+#####################################################################
+install.packages("e1071")       #machine learning package
+install.packages("gmodels")     #machine learning package
+install.packages("RWekajars")   #machine learning package
+install.packages("devtools")
+install.packages("tm")          #text minning package
+install.packages("corpus")
+install.packages("wordcloud")   #make word cloud
+library(gmodels)
+library(e1071)
+library(devtools)
+library(RWekajars)
+library(tm)
+library(corpus)
+library(wordcloud)
+sms_spam <- read.csv("C:\\Users\\snf6123\\OneDrive for Business\\Compartilhado com Todos\\PERL\\SAS\\MACHINE LEARNING\\BAYES MODELS\\SPAM\\SMS_SPAM.csv", stringsAsFactors = FALSE, sep = ";")
+str(sms_spam)
+sms_spam$type = factor(sms_spam$type)
+str(sms_spam)
+sms_text <- Corpus(VectorSource(sms_spam$text))
+
+#####################################################################
+#################### LIMPEZA DO TEXTO ###############################
+#####################################################################
+corpus_limpeza <- tm_map(sms_text, tolower)
+corpus_limpeza <- tm_map(corpus_limpeza, removeNumbers)
+corpus_limpeza <- tm_map(corpus_limpeza, removeWords, stopwords())
+corpus_limpeza <- tm_map(corpus_limpeza, removePunctuation)
+corpus_limpeza <- tm_map(corpus_limpeza, stripWhitespace)
+
+#####################################################################
+################## CRIO DOCUMENT TERM MATRIX ########################
+########### SERVE PARA VERIFICAR A CONTAGEM DE CADA TERMO ###########
+#####################################################################
+sms_dtm <- DocumentTermMatrix(corpus_limpeza)
+
+#####################################################################
+#################### SELECIONA AMOSTRAGEM ###########################
+#####################################################################
+#VEJO QUANTAS LINHAS TEM A BASE
+STR(corpus_limpeza)
+sms_spam_train <- sms_spam[1:4172, ]
+sms_spam_test <- sms_spam[4173:5572, ]
+sms_dtm_train <- sms_dtm[1:4172, ]
+sms_dtm_test <- sms_dtm[4173:5572, ]
+sms_corpus_train <- corpus_limpeza[1:4172]
+sms_corpus_test <- corpus_limpeza[4173:5572]
+#CHECO SE A PROPORÃÃO DAS BASES ESTÃ CORRETA:
+prop.table(table(sms_spam_test$type))
+prop.table(table(sms_spam_train$type))
+
+#####################################################################
+###################### VISUALIZO OS DADOS ###########################
+#####################################################################
+#quero todas as palavras que aparecem ao menos 1% das vezes
+wordcloud(sms_corpus_train, random.order = FALSE, min.freq = 41)
+
+#quebro a visualuzaÃ§Ã£o por tipo de mensagem - spam e nÃ£o spam
+spam <- subset(sms_spam_train, type == "spam")
+valido <- subset(sms_spam_train, type == "ham")
+str(spam)
+str(valido)
+corpus_spam <- Corpus(VectorSource(spam))
+corpus_spam <- tm_map(corpus_spam, tolower)
+corpus_spam <- tm_map(corpus_spam, removeNumbers)
+corpus_spam <- tm_map(corpus_spam, removeWords, stopwords())
+corpus_spam <- tm_map(corpus_spam, removePunctuation)
+corpus_spam <- tm_map(corpus_spam, stripWhitespace)
+dtm_spam_train <- DocumentTermMatrix(corpus_spam)
+
+corpus_ham <- Corpus(VectorSource(valido))
+corpus_ham <- tm_map(corpus_ham, tolower)
+corpus_ham <- tm_map(corpus_ham, removeNumbers)
+corpus_ham <- tm_map(corpus_ham, removeWords, stopwords())
+corpus_ham <- tm_map(corpus_ham, removePunctuation)
+corpus_ham <- tm_map(corpus_ham, stripWhitespace)
+dtm_ham_train <- DocumentTermMatrix(corpus_ham)
+wordcloud(corpus_spam, random.order = FALSE, min.freq = 5)
+wordcloud(corpus_ham, random.order = FALSE, min.freq = 30)
+
+#####################################################################
+###################### ESTRUTURANDO O MODELO ########################
+#####################################################################
+#ELIMINO AS PALAVRAS QUE APARECEM MENOS DE 0,1% DAS VEZES NA DTM
+#GUARDO AS PALAVRAS VALIDAS EM UM DICIONÃRIO
+sms_dict <- c(findFreqTerms(sms_dtm_train, lowfreq = 4))
+sms_train <- DocumentTermMatrix(sms_corpus_train, list(dictionary = sms_dict))
+sms_test <- DocumentTermMatrix(sms_corpus_test, list(dictionary = sms_dict))
+
+# agora preciso fazer com que a matriz substitua os valores 0 e 1
+# por "SIM" ou "NÃO"
+convert_counts <- function(x) {
+  x <- ifelse(x>0, 1, 0)
+  x <- factor(x, levels=c(0,1), labels = c("NO", "YES"))
+  return(x)
+}
+sms_train <- apply(sms_train, MARGIN = 2, convert_counts)
+sms_test <- apply(sms_test, MARGIN = 2, convert_counts)
+
+#####################################################################
+######################## APLICA O MODELO ############################
+#####################################################################
+# build the classifier:
+sms_classifier <- naiveBayes(sms_train, sms_spam_train$type, laplace = 0)
+#build the predictor:
+sms_test_pred <- predict (sms_classifier, sms_test)
+
+#####################################################################
+############### AVALIA A PERFORMANCE DO MODELO ######################
+#####################################################################
+CrossTable(sms_test_pred, 
+           sms_spam_test$type, 
+           prop.chisq = FALSE, 
+           prop.t = FALSE,
+           dnn = c('predicted', 'actual'))
